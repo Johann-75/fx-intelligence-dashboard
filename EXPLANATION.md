@@ -19,8 +19,9 @@ currency_dashboard/
 ├── .env                  # Environment variables (Supabase URL & API Keys)
 ├── README.md             # Standard project readme
 ├── backend/
-│   ├── fx_fetcher.py     # Module for pulling data from Yahoo Finance
-│   └── fx_scheduler.py   # Main data ingestion script that upserts data to Supabase
+│   ├── fx_fetcher.py     # Module for pulling financial data
+│   ├── fx_scheduler.py   # Data ingestion pipeline for Supabase
+│   └── news_fetcher.py   # AI-powered news processing module
 └── dashboard/
     └── fx_app.py         # The Streamlit frontend application
 ```
@@ -54,6 +55,18 @@ This script acts as the orchestrator. It uses `fx_fetcher.py` to get the data, a
 - **Batching**: To improve network reliability and avoid API limits, the data is pushed in chunks of 1000 rows.
 - **Execution**: The main block defines a hardcoded list of the 5 tracked pairs (USD/INR, EUR/USD, GBP/USD, USD/JPY, and the DXY Dollar Index) and executes the ingestion pipeline.
 
+### 2.3. `news_fetcher.py` (The AI Intelligence Layer)
+
+While FX rates provide the numbers, news provides the *why*. This module adds a layer of intelligence by processing global financial news using Artificial Intelligence.
+
+- **Data Sourcing (NewsAPI)**: It connects to the NewsAPI service to search for "forex" or "exchange rate" articles from the last 48 hours. This ensures the dashboard always has fresh, relevant headlines.
+- **AI Processing (Google Gemini 1.5 Flash)**: 
+  - The script passes raw headlines and descriptions to the Gemini AI model.
+  - **Summarization**: It generates ultra-concise summaries (max 15 words) for quick readability.
+  - **Sentiment Analysis**: It classifies the economic impact of the news as *Positive*, *Negative*, or *Neutral*.
+  - **Currency Tagging**: AI intelligently identifies which currency the news affects (e.g., tagging an article about "Fed pivot" as *USD* and a "Reserve Bank of India" update as *INR*).
+- **Targeted Queries**: It supports focused searching, allowing the dashboard to fetch news specifically related to a user's selected "Focus Hub" currencies.
+
 ---
 
 ## 3. The Frontend: `fx_app.py`
@@ -84,12 +97,16 @@ The UI is divided into several interactive blocks:
 - **Block 2: Trend Analysis**: Generates interactive time-series line charts using `plotly`. If enabled, it overlays 20-Day and 50-Day Simple Moving Averages to show momentum.
 - **Block 3: Volatility Metrics**: Displays the 30-day Annualized Volatility compared to the 2-Year historical average. This tells the user if the currency is acting chaotic or calm relative to its norm.
 - **Block 4: Drawdown Analysis**: Renders an area chart showing the depth of price drops over time, helping analyze currency resilience.
-- **Block 5: Data Engineering Audit**: A footer section transparently displaying how many database rows fuel the current view, acting as a data integrity check.
+- **Block 5: Market Intelligence (AI Feed)**: 
+  - Displays the latest news processed by `news_fetcher.py`.
+  - Feature color-coded sentiment badges (Green for Positive, Red for Negative) and currency tags for quick filtering.
+  - Users can refresh the feed or filter by specific currencies (Focus Hub) directly from the sidebar.
+- **Block 6: Data Engineering Audit**: A footer section transparently displaying how many database rows fuel the current view, acting as a data integrity check.
 
 ## Summary 
 
 1. **`backend/fx_scheduler.py`** gets executed. It calls **`fx_fetcher.py`** to get Yahoo Finance data.
 2. The data is transformed and securely upserted straight into **Supabase PostgreSQL**.
 3. A user opens the browser to view local port `8501`.
-4. **`dashboard/fx_app.py`** executes, instantly fetching data from **Supabase** (or from RAM cache).
-5. The frontend computes the dynamic math (Returns, Volatility, Moving Averages) and renders the dark, interactive Plotly dashboard.
+4. **`dashboard/fx_app.py`** executes, instantly fetching data from **Supabase** and daily news via **`news_fetcher.py`**.
+5. The frontend computes the dynamic math (Returns, Volatility, Moving Averages) and renders the dark, interactive Plotly dashboard with an AI-enriched market feed.
