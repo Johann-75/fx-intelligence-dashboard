@@ -6,6 +6,13 @@ import requests
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 import numpy as np
+import sys
+import os
+
+# Ensure project root is in path for backend imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from backend.news_fetcher import get_processed_news
+
 
 # ─── Ticker Mapping Layer ──────────────────────────────────────────────────
 TICKER_MAP = {
@@ -122,7 +129,106 @@ section[data-testid="stSidebar"] { background: #0d1117 !important; border-right:
 
 .tag-pos { color: #3fb950; }
 .tag-neg { color: #f85149; }
-.tag-neu { color: #8b949e; }
+/* Global Section Headers */
+.section-header {
+    color: #e6edf3;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.section-header span {
+    font-size: 1.2rem;
+    background: rgba(88, 166, 255, 0.1);
+    color: #58a6ff;
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-weight: 500;
+}
+
+/* News Section Cards */
+.news-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1.5rem;
+    margin-top: 0.5rem;
+}
+.news-card {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 1.5rem;
+    transition: all 0.2s ease-in-out;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+.news-card:hover {
+    border-color: #58a6ff;
+    background: #161b22;
+}
+.news-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+.news-badge {
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.badge-pos { background: rgba(46, 160, 67, 0.15); color: #3fb950; border: 1px solid rgba(46, 160, 67, 0.3); }
+.badge-neg { background: rgba(248, 81, 73, 0.15); color: #f85149; border: 1px solid rgba(248, 81, 73, 0.3); }
+.badge-neu { background: rgba(139, 148, 158, 0.15); color: #8b949e; border: 1px solid rgba(139, 148, 158, 0.3); }
+
+.news-currency {
+    color: #58a6ff;
+    font-weight: 600;
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+}
+.news-title {
+    color: #f0f6fc;
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin: 8px 0 12px 0;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.news-summary {
+    color: #8b949e;
+    font-size: 0.85rem;
+    flex-grow: 1;
+    line-height: 1.5;
+    margin-bottom: 1rem;
+}
+.news-footer {
+    padding-top: 12px;
+    border-top: 1px solid #21262d;
+    font-size: 0.75rem;
+    color: #7d8590;
+    display: flex;
+    justify-content: space-between;
+}
+.news-link {
+    color: #58a6ff;
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+.news-link:hover {
+    text-decoration: underline;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -141,10 +247,11 @@ def load_all_data() -> pd.DataFrame:
     while True:
         headers["Range"] = f"{offset}-{offset + PAGE_SIZE - 1}"
         r = requests.get(
-            f"{SUPABASE_URL}/rest/v1/fx_rates?select=timestamp,pair,close&order=timestamp.asc",
+            f"{SUPABASE_URL}/rest/v1/fx_rates?select=timestamp,pair,close&order=timestamp.desc",
             headers=headers,
             timeout=30,
         )
+
         r.raise_for_status()
         batch = r.json()
         if not batch:
@@ -242,6 +349,24 @@ with st.sidebar:
     show_ma50 = st.checkbox("Show 50-Day MA", value=True)
 
     st.caption(f"Last record: {df_all['timestamp'].max().strftime('%d %b %Y')}")
+    
+    st.markdown("---")
+    st.markdown("### 📰 News Filters")
+    news_count = st.slider("Max Articles", 3, 12, 6)
+    
+    # Currency filtering for news
+    currency_options = ["Global", "USD", "EUR", "INR", "JPY", "GBP"]
+    selected_news_currencies = st.multiselect(
+        "Focus Hub",
+        currency_options,
+        default=["Global", "USD", "INR"],
+        help="Select currencies you want to track news for."
+    )
+    
+    if st.button("Refresh Feed", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
 
 
 if not selected_pairs:
@@ -369,6 +494,92 @@ for i, pair in enumerate(selected_pairs):
             </div>
         </div>
         """, unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════════════════
+# BLOCK 6 — MARKET INTELLIGENCE
+# ═══════════════════════════════════════════════════════════════════════
+st.markdown('<div class="section-header">🧠 Market Intelligence <span>AI-Powered</span></div>', unsafe_allow_html=True)
+
+@st.cache_data(ttl=900) # Reduced TTL for troubleshooting
+def load_news_data(currencies=None):
+    try:
+        # Pass currencies to get targeted news
+        news = get_processed_news(query="forex OR \"exchange rate\"", page_size=50, currencies=currencies)
+        if not news and currencies:
+            # Fallback to global news if targeted news is empty
+            print(f"No news found for {currencies}, falling back to global...")
+            news = get_processed_news(query="forex OR \"exchange rate\"", page_size=30, currencies=None)
+        return news
+    except Exception as e:
+        print(f"ERROR in load_news_data: {e}")
+        # Final fallback - try one last time with basic query
+        try:
+             return get_processed_news(query="forex", page_size=20, currencies=None)
+        except:
+             return []
+
+# Force refresh if requested via a trick (or just use standard cache)
+all_news = load_news_data(tuple(selected_news_currencies) if selected_news_currencies else None)
+
+
+
+if all_news:
+    # Improved filtering logic
+    if not selected_news_currencies:
+        filtered_news = all_news[:news_count]
+        st.info("Showing most recent global news.")
+    else:
+        # Normalize selections for comparison
+        selections = [s.upper() for s in selected_news_currencies]
+        filtered_news = []
+        for item in all_news:
+            curr = item.get("currency", "GLOBAL").upper()
+            if curr in selections:
+                filtered_news.append(item)
+        
+        # If we have specific results, use them
+        if filtered_news:
+            filtered_news = filtered_news[:news_count]
+        else:
+            # If NO results for specific currencies, inform user and show latest
+            st.warning(f"No recent news found specifically for {', '.join(selected_news_currencies)}. Showing latest market updates instead.")
+            filtered_news = all_news[:news_count]
+
+
+    st.markdown('<div class="news-container">', unsafe_allow_html=True)
+    for art in filtered_news:
+        sentiment = art.get("sentiment", "Neutral")
+        s_class = "badge-pos" if sentiment == "Positive" else "badge-neg" if sentiment == "Negative" else "badge-neu"
+        currency = art.get("currency", "Global")
+        pub_time = art.get("publishedAt", "")
+        if pub_time:
+            try:
+                dt = datetime.fromisoformat(pub_time.replace("Z", "+00:00"))
+                pub_time = dt.strftime("%H:%M · %b %d")
+            except: pass
+        
+        source = art.get("source", {}).get("name", "Market")
+        
+        st.markdown(f"""
+        <div class="news-card">
+            <div class="news-meta">
+                <span class="news-badge {s_class}">{sentiment}</span>
+                <span class="news-currency">{currency}</span>
+            </div>
+            <div class="news-title">{art.get('title', 'Market Update')}</div>
+            <div class="news-summary">{art.get('summary', '')}</div>
+            <div class="news-footer">
+                <b>{source}</b>
+                <span>{pub_time}</span>
+            </div>
+            <a href="{art.get('url', '#')}" target="_blank" class="news-link" style="margin-top: 15px; display: block;">Read Full Analysis →</a>
+        </div>
+        """, unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+else:
+    st.info("Market feed currently unavailable.")
+
+
 
 st.markdown("---")
 

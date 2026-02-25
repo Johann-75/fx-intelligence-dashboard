@@ -52,3 +52,5 @@ if __name__ == "__main__":
         print(f"Total rows: {len(data)}")
     except Exception as e:
         print(f"Error: {e}")
+
+
