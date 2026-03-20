@@ -1,10 +1,14 @@
+import sys
 import os
+import json
 import pandas as pd
 import requests
-from dotenv import load_dotenv
+
+# Ensure we can import from the same directory when run from project root
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from fx_fetcher import fetch_fx_data
-import sys
-import json
+from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
@@ -26,7 +30,8 @@ def upsert_fx_data(df: pd.DataFrame):
 
     # Prepare records for Supabase
     records = df.copy()
-    records['timestamp'] = records['timestamp'].dt.strftime('%Y-%m-%dT%H:%M:%S%z')
+    # Use .map() directly on the Series
+    records['timestamp'] = records['timestamp'].map(lambda x: x.isoformat())
     data_to_upsert = records.to_dict(orient='records')
 
     # Postgrest endpoint
@@ -36,18 +41,21 @@ def upsert_fx_data(df: pd.DataFrame):
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
         "Content-Type": "application/json",
-        "Prefer": "resolution=merge-duplicates"
+        "Prefer": "resolution=merge-duplicates, on_conflict=timestamp,pair"
     }
 
     try:
         response = requests.post(url, headers=headers, data=json.dumps(data_to_upsert))
+        if response.status_code != 201 and response.status_code != 200:
+             print(f"Supabase Error {response.status_code}: {response.text}")
+             print(f"Sample data sent: {data_to_upsert[0] if data_to_upsert else 'Empty'}")
         response.raise_for_status()
         print(f"Successfully upserted {len(data_to_upsert)} rows.")
         return response
     except Exception as e:
-        print(f"Error during upsert: {e}")
         if hasattr(e, 'response') and e.response is not None:
-             print(f"Response: {e.response.text}")
+             print(f"Supabase Response Text: {e.response.text}")
+        print(f"Error during upsert: {e}")
         raise
 
 def run_ingestion(pairs: list[str], period: str = "5y"):
@@ -57,15 +65,35 @@ def run_ingestion(pairs: list[str], period: str = "5y"):
     print(f"Starting ingestion for {pairs} over {period}...")
     try:
         df = fetch_fx_data(pairs, period=period)
+        
+        # Drop rows with NaN values which can cause 400 errors in Supabase
+        df = df.dropna()
+        
         # Drop duplicates in case yfinance returns some (rare but possible)
         df = df.drop_duplicates(subset=['timestamp', 'pair'])
-        
-        # Batch upsert if data is large (e.g. 5 tickers * 5 years * 252 days = 6300 rows)
-        # Supabase/Postgrest handles this fine, but we can chunk if needed.
-        chunk_size = 1000
+
+        # Batch upsert if data is large
+        chunk_size = 10
         for i in range(0, len(df), chunk_size):
             chunk = df.iloc[i:i+chunk_size]
-            upsert_fx_data(chunk)
+            try:
+                upsert_fx_data(chunk)
+            except Exception as e:
+                # If chunk failed, try row-by-row as fallback
+                all_conflicts = True
+                for ridx, row in chunk.iterrows():
+                    try:
+                        upsert_fx_data(pd.DataFrame([row]))
+                    except Exception as inner_e:
+                        if "409" in str(inner_e):
+                            continue
+                        all_conflicts = False
+                        print(f"BAD ROW: {row.to_dict()}")
+                        print(f"REASON: {inner_e}")
+                
+                # Only raise if there were real errors (not just conflicts)
+                if not all_conflicts:
+                    raise e
             
         print("Ingestion completed successfully.")
     except Exception as e:
