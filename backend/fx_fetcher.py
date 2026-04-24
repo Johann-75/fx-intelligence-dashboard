@@ -4,14 +4,7 @@ from datetime import datetime
 
 def fetch_fx_data(pairs: list[str], period: str = "5y") -> pd.DataFrame:
     """
-    Fetches historical FX data for given pairs using yfinance.
-    
-    Args:
-        pairs: List of FX tickers (e.g., ['USDINR=X', 'EURUSD=X'])
-        period: Period to fetch (default "5y")
-        
-    Returns:
-        DataFrame with columns [timestamp, pair, close]
+    Fetches historical FX data using yfinance and standardizes the format.
     """
     all_data = []
     

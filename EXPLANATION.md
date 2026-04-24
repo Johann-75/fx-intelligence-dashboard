@@ -72,6 +72,14 @@ The dashboard is built with a **"High-Contrast, Low-Noise"** philosophy:
 
 ---
 
+## 5. Dynamic Architecture (Anti-Hardcoding)
+
+Unlike basic dashboards, this platform is built with a **Configuration-Driven** approach. 
+
+- **Discovery Logic**: Instead of hardcoding "USD/INR", the app scans the Supabase database on initialization to discover all unique currency pairs.
+- **Smart Mapping**: It uses a fallback transformation engine to convert raw yfinance tickers (like `EURUSD=X`) into professional labels (`EUR/USD`) dynamically.
+- **Scalability**: This architecture allows the platform to scale from 1 to 100+ currency pairs by simply updating the database, requiring zero additional code changes.
+
 ---
 
 ## 🏁 Summary for Collaborators

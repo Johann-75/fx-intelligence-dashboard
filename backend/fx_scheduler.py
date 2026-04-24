@@ -1,20 +1,13 @@
-import sys
 import os
+import sys
 import json
 import pandas as pd
 import requests
-
-# Ensure we can import from the same directory when run from project root
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from fx_fetcher import fetch_fx_data
 from dotenv import load_dotenv
+from fx_fetcher import fetch_fx_data
 
-# Load environment variables
 load_dotenv()
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_URL, SUPABASE_KEY = os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     print("Error: SUPABASE_URL and SUPABASE_KEY must be set in .env")
@@ -101,9 +94,7 @@ def run_ingestion(pairs: list[str], period: str = "5y"):
         sys.exit(1)
 
 if __name__ == "__main__":
-    tickers = [
-        "USDINR=X"
-    ]
+    tickers = ["USDINR=X"]
     
     import argparse
     parser = argparse.ArgumentParser(description="FX Data Ingestor")

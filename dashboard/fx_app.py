@@ -7,17 +7,13 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 import numpy as np
 
-# ─── Ticker Mapping Layer ──────────────────────────────────────────────────
-TICKER_MAP = {
-    "USDINR=X": "USD/INR",
-}
+TICKER_MAP = {"USDINR=X": "USD/INR"}
 REVERSE_TICKER_MAP = {v: k for k, v in TICKER_MAP.items()}
 
 EXPLANATIONS = {
-    "USD/INR": "USD/INR shows how many Indian Rupees are required to buy 1 US Dollar. If it rises, the Dollar is strengthening (INR is weakening). If it falls, the INR is strengthening.",
+    "USD/INR": "USD/INR shows how many Indian Rupees are required to buy 1 US Dollar. Rising means Dollar strength, falling means INR strength.",
 }
 
-# ─── Config ───────────────────────────────────────────────────────────────────
 load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -161,9 +157,8 @@ section[data-testid="stSidebar"] {
 
 COLORS = ["#58a6ff", "#f0883e", "#3fb950", "#ff7b72", "#d2a8ff"]
 
-# ─── Data Loading ─────────────────────────────────────────────────────────────
-@st.cache_data(ttl=600, show_spinner="Loading FX data…")
-def load_all_data() -> pd.DataFrame:
+@st.cache_data(ttl=600, show_spinner="Fetching latest rates...")
+def load_all_data():
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -228,7 +223,7 @@ def compute_drawdown_stats(s: pd.Series, ts: pd.Series):
 def rolling_vol_series(s: pd.Series, window=30) -> pd.Series:
     return s.pct_change().rolling(window, min_periods=5).std() * np.sqrt(252) * 100
 
-# ─── Load Data ────────────────────────────────────────────────────────────────
+# --- Main App Logic ---
 try:
     df_all  = load_all_data()
 except Exception as e:
@@ -369,8 +364,6 @@ for pair in selected_pairs:
     """, unsafe_allow_html=True)
 
 st.markdown("---")
-
-# 📈 TREND ANALYSIS
 st.markdown(f"### 📈 Trend Analysis — {window_label}")
 
 from plotly.subplots import make_subplots
